@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>语音转写与文本脱敏 · 本地运行</title>
+<style>
+  :root {
+    --ink: #1b2130;
+    --muted: #6b7280;
+    --line: #e3e6ec;
+    --bg: #f7f8fa;
+    --card: #ffffff;
+    --accent: #2b5bd7;
+    --accent-soft: #eef2fd;
+    --warn: #b45309;
+    --warn-soft: #fff7e6;
+    --warn-line: #f0c98a;
+    --ok: #0f7a52;
+    --ok-soft: #eaf7f1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.65 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 22px 28px 18px; border-bottom: 1px solid var(--line); background: var(--card);
+  }
+  h1 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: .2px; }
+  header .sub { color: var(--muted); font-size: 12.5px; padding-left: 12px; border-left: 1px solid var(--line); }
+  #status {
+    margin-left: auto; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); background: #fff;
+  }
+  #status.ready { color: var(--ok); border-color: #bfe3d4; background: var(--ok-soft); }
+  #status.text-only { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
+
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 18px; padding: 20px 28px 40px; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  .card > h2 {
+    margin: 0; padding: 13px 16px 11px; font-size: 12px; font-weight: 600;
+    letter-spacing: .5px; color: var(--muted); border-bottom: 1px solid var(--line);
+    text-transform: uppercase;
+  }
+  .card > .body { padding: 14px 16px 16px; }
+  #resultCard > .body { min-height: 452px; }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 5px; }
+  input[type=text], textarea {
+    width: 100%; font: inherit; font-size: 13.5px; color: var(--ink);
+    padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff;
+    outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  input[type=text]:focus, textarea:focus { border-color: #a9bff0; box-shadow: 0 0 0 3px rgba(43,91,215,.09); }
+  textarea { resize: vertical; min-height: 96px; line-height: 1.7; }
+  .field + .field { margin-top: 12px; }
+  .hint { font-size: 11.5px; color: #98a1b0; margin-top: 4px; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    transition: background .15s, border-color .15s, opacity .15s;
+  }
+  button:hover:not(:disabled) { background: #f4f6fa; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #244fc0; }
+  button.rec { background: #fff; border-color: #e6b8b8; color: #b3261e; }
+  button.rec.on { background: #b3261e; border-color: #b3261e; color: #fff; }
+  button.ghost { background: transparent; }
+  #timer { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12.5px; align-self: center; }
+
+  .result { min-height: 220px; }
+  .block + .block { margin-top: 16px; }
+  .block h3 {
+    margin: 0 0 6px; font-size: 11.5px; font-weight: 600; color: var(--muted);
+    letter-spacing: .5px; text-transform: uppercase;
+  }
+  .text {
+    white-space: pre-wrap; word-break: break-word; font-size: 14.5px; line-height: 1.85;
+    padding: 12px 14px; background: #fbfcfe; border: 1px solid var(--line); border-radius: 8px;
+    min-height: 46px;
+  }
+  mark {
+    padding: 1px 3px; border-radius: 4px; background: var(--accent-soft);
+    color: #16337d; border: 1px solid #c9d7f7; cursor: pointer; font-weight: 500;
+  }
+  mark.low { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
+  mark.kept { background: #fff; color: var(--ink); border-style: dashed; border-color: #c7ccd6; font-weight: 400; }
+  mark:hover { filter: brightness(.97); }
+
+  #spans { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #spans th, #spans td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  #spans th { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .4px; }
+  #spans td.num { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .pill.auto { color: var(--ok); border-color: #bfe3d4; background: var(--ok-soft); }
+  .pill.wait { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
+  .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+
+  #meta { font-size: 12px; color: var(--muted); margin-top: 10px; font-variant-numeric: tabular-nums; }
+  #err { display: none; margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; font-size: 13px;
+         color: #8a1f1f; background: #fdeeee; border: 1px solid #f0c4c4; }
+  .empty { color: #a3aab8; font-size: 13px; }
+
+  footer { padding: 2px 28px 30px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  footer .label { font-size: 11px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
+  footer .chain { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  footer .step {
+    font-size: 12px; color: #4a5464; background: #fff;
+    border: 1px solid var(--line); border-radius: 6px; padding: 3.5px 9px;
+  }
+  footer .arrow { color: #c6ccd6; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>语音转写与文本脱敏</h1>
+  <span class="sub">录音不出本机 · 转写在本机跑 · 脱敏规则可解释</span>
+  <span id="status">检测中…</span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>输入</h2>
+    <div class="body">
+      <div class="field">
+        <label>录音</label>
+        <div class="row">
+          <button id="btnRec" class="rec">开始录音</button>
+          <input type="file" id="file" accept=".wav,audio/wav" hidden>
+          <button id="btnFile" class="ghost">选择 WAV</button>
+          <span id="timer"></span>
+        </div>
+        <div class="hint">录音在浏览器内转成 16kHz 单声道 WAV，上传后只存在于内存，不写磁盘、不进日志。</div>
+      </div>
+
+      <div class="field">
+        <label for="hotwords">词表（人名 / 术语，逗号分隔）</label>
+        <input type="text" id="hotwords" placeholder="张建军,李国强,栖霞寺">
+        <div class="hint">词表有两个用途：解码前作为热词调整先验；解码后做同音纠错。</div>
+      </div>
+
+      <div class="field">
+        <label for="text">或者直接粘贴文本（不录音也能测脱敏）</label>
+        <textarea id="text" placeholder="被告人张建军，身份证号110105199003078211，手机13812345678，住北京市朝阳区建国路88号。"></textarea>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <button id="btnRedact" class="primary">只做脱敏</button>
+        <button id="btnDemo" class="ghost">填入示例</button>
+      </div>
+      <div class="hint" style="margin-top:8px">录音或上传 WAV 会自动走「转写 → 脱敏」；文本框里的内容只走脱敏。</div>
+    </div>
+  </section>
+
+  <section class="card" id="resultCard">
+    <h2>结果</h2>
+    <div class="body">
+      <div id="err"></div>
+      <div class="result">
+        <div class="block">
+          <h3>转写原文</h3>
+          <div class="text" id="raw"><span class="empty">还未处理</span></div>
+        </div>
+        <div class="block">
+          <h3>脱敏后（点击黄色标记可改回原文）</h3>
+          <div class="text" id="redacted"><span class="empty">—</span></div>
+        </div>
+        <div class="block">
+          <h3>命中明细</h3>
+          <table id="spans"><tbody><tr><td class="empty">—</td></tr></tbody></table>
+        </div>
+        <div id="meta"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span class="label">链路</span>
+  <div class="chain">
+    <span class="step">录音 · 浏览器内转 16kHz WAV</span><span class="arrow">→</span>
+    <span class="step">本机 faster-whisper</span><span class="arrow">→</span>
+    <span class="step">热词与拼音纠错</span><span class="arrow">→</span>
+    <span class="step">规则脱敏 · 校验位 / Luhn / 正则</span><span class="arrow">→</span>
+    <span class="step">人工确认</span>
+  </div>
+</footer>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { spans: [], kept: new Set(), result: null, transcript: null };
+
+const SAMPLE = "被告人张建军，男，1990年3月7日出生，身份证号110105199003078211，手机13812345678，"
+  + "住北京市朝阳区建国路88号。2024年3月15日通过尾号6222 0202 0000 1235的银行卡向李国强转账123,000元。"
+  + "案号（2024）京0105刑初123号。";
+
+function setError(msg) {
+  const el = $("#err");
+  if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
+  el.style.display = "block"; el.textContent = msg;
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch("/api/status");
+    const s = await r.json();
+    const el = $("#status");
+    if (s.asr && s.asr.available) {
+      el.textContent = "本地模型已就绪";
+      el.className = "ready";
+    } else {
+      el.textContent = "未检测到模型 · 仅文字脱敏";
+      el.className = "text-only";
+      el.title = (s.asr && s.asr.hint) || "";
+    }
+  } catch {
+    $("#status").textContent = "服务未连接";
+  }
+}
+
+/* ── 录音 → 16kHz 单声道 WAV ─────────────────────────────────────────── */
+let recorder = null, chunks = [], startedAt = 0, tick = null;
+
+function encodeWav(samples, rate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); str(8, "WAVE");
+  str(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++, off += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+async function toWav16k(blob) {
+  const raw = await blob.arrayBuffer();
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  const audio = await ac.decodeAudioData(raw);
+  await ac.close();
+  const target = 16000;
+  const off = new OfflineAudioContext(1, Math.ceil(audio.duration * target), target);
+  const src = off.createBufferSource();
+  src.buffer = audio; src.connect(off.destination); src.start();
+  const rendered = await off.startRendering();
+  return encodeWav(rendered.getChannelData(0), target);
+}
+
+$("#btnRec").onclick = async () => {
+  const btn = $("#btnRec");
+  if (recorder && recorder.state === "recording") {
+    recorder.stop();
+    return;
+  }
+  setError("");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true } });
+    recorder = new MediaRecorder(stream);
+    chunks = [];
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      clearInterval(tick); btn.textContent = "开始录音"; btn.classList.remove("on");
+      $("#timer").textContent = "";
+      btn.disabled = true;
+      try {
+        const wav = await toWav16k(new Blob(chunks, { type: "audio/webm" }));
+        await runPipeline(wav);
+      } catch (e) { setError("音频处理失败：" + e.message); }
+      btn.disabled = false;
+    };
+    recorder.start();
+    btn.textContent = "停止录音"; btn.classList.add("on");
+    startedAt = Date.now();
+    tick = setInterval(() => {
+      $("#timer").textContent = ((Date.now() - startedAt) / 1000).toFixed(1) + "s";
+    }, 100);
+  } catch (e) {
+    setError("无法访问麦克风：" + e.message + "（可改用「选择 WAV」或直接粘贴文本）");
+  }
+};
+
+$("#btnFile").onclick = () => $("#file").click();
+$("#file").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  setError("");
+  try { await runPipeline(f); } catch (err) { setError("音频处理失败：" + err.message); }
+  e.target.value = "";
+};
+
+$("#btnDemo").onclick = () => { $("#text").value = SAMPLE; $("#hotwords").value = "张建军,李国强"; };
+
+/* ── 调用 ─────────────────────────────────────────────────────────────── */
+async function runPipeline(blob) {
+  const words = $("#hotwords").value.trim();
+  const q = new URLSearchParams();
+  if (words) { q.set("hotwords", words.split(/[,，]/).map(s => s.trim()).filter(Boolean).join(",")); q.set("persons", words); }
+  setBusy(true);
+  try {
+    const r = await fetch("/api/pipeline?" + q.toString(), { method: "POST", body: blob });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "处理失败");
+    state.transcript = data.transcript;
+    state.result = data.redaction;
+    render(data.transcript.text, data.redaction, data.transcript);
+  } finally { setBusy(false); }
+}
+
+$("#btnRedact").onclick = () => {
+  const text = $("#text").value.trim();
+  if (!text) return setError("先粘贴一段文本，或用「填入示例」");
+  runRedact(text);
+};
+
+async function runRedact(text) {
+  setError(""); setBusy(true);
+  const words = $("#hotwords").value.trim();
+  try {
+    const r = await fetch("/api/redact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, persons: words, heuristic: true }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "脱敏失败");
+    state.result = data;
+    state.transcript = null;
+    render(text, data, null);
+  } catch (e) { setError(e.message); }
+  finally { setBusy(false); }
+}
+
+function setBusy(b) {
+  ["#btnRedact", "#btnRec", "#btnFile"].forEach((s) => { $(s).disabled = b; });
+  if (b) $("#meta").textContent = "处理中…";
+}
+
+/* ── 渲染 ─────────────────────────────────────────────────────────────── */
+function render(raw, res, tr) {
+  state.kept = new Set();
+  $("#raw").textContent = raw || "（空）";
+
+  const spans = res.spans || [];
+  state.spans = spans;
+
+  const wrap = $("#redacted");
+  wrap.innerHTML = "";
+  let cursor = 0;
+  spans.forEach((sp, i) => {
+    if (sp.start < cursor) return;
+    wrap.appendChild(document.createTextNode(raw.slice(cursor, sp.start)));
+    const m = document.createElement("mark");
+    m.textContent = sp.placeholder;
+    m.dataset.i = i;
+    m.title = `${sp.kind} · 置信度 ${sp.confidence} · ${sp.method}\n原文：${sp.text}`;
+    if (sp.confidence < 0.85) m.classList.add("low");
+    m.onclick = () => toggleKept(i);
+    wrap.appendChild(m);
+    cursor = sp.end;
+  });
+  wrap.appendChild(document.createTextNode(raw.slice(cursor)));
+
+  const tb = $("#spans").querySelector("tbody");
+  tb.innerHTML = spans.length
+    ? spans.map((sp, i) => `<tr>
+        <td class="mono">${esc(sp.placeholder)}</td>
+        <td>${esc(sp.text)}</td>
+        <td>${kindLabel(sp.kind)}</td>
+        <td class="num">${sp.confidence.toFixed(2)}</td>
+        <td><span class="pill ${sp.confidence >= 0.85 ? "auto" : "wait"}">${sp.confidence >= 0.85 ? "自动" : "待确认"}</span></td>
+        <td style="color:#8a93a3;font-size:12px">${esc(sp.method)}</td>
+      </tr>`).join("")
+    : `<tr><td class="empty">没有命中</td></tr>`;
+
+  const s = res.stats || {};
+  const bits = [`命中 ${s.total || 0} 项`, `自动 ${s.auto_replaced || 0}`, `待确认 ${s.need_confirm || 0}`];
+  if (tr) {
+    bits.push(`音频 ${tr.duration}s`);
+    bits.push(`推理 ${tr.elapsed}s`);
+    if (tr.rtf) bits.push(`实时率 ${tr.rtf}`);
+    if (tr.corrections && tr.corrections.length) {
+      bits.push(`词表纠错 ${tr.corrections.map((c) => c.from + "→" + c.to).join("、")}`);
+    }
+  }
+  $("#meta").textContent = bits.join(" · ");
+}
+
+function toggleKept(i) {
+  const m = document.querySelector(`mark[data-i="${i}"]`);
+  if (!m) return;
+  const sp = state.spans[i];
+  if (state.kept.has(i)) { state.kept.delete(i); m.textContent = sp.placeholder; m.classList.remove("kept"); }
+  else { state.kept.add(i); m.textContent = sp.text; m.classList.add("kept"); }
+}
+
+const KIND = { id_card: "身份证", phone: "手机号", bank_card: "银行卡", case_no: "案号", email: "邮箱",
+  amount: "金额", date: "日期", plate: "车牌", address: "地址", person: "当事人", org: "机构" };
+const kindLabel = (k) => KIND[k] || k;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+refreshStatus();
+
+// 打开即跑一次示例：第一次访问的人不用点任何按钮就能看到效果。
+// 这也是这个 demo 的自我说明——界面上不需要写"请点击开始"。
+$("#text").value = SAMPLE;
+$("#hotwords").value = "张建军,李国强";
+runRedact(SAMPLE);
+</script>
+</body>
+</html>
